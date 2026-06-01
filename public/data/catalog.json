@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1.0.0",
+  "updatedAt": "2026-05-31T00:00:00+09:00",
+  "banks": [
+    {
+      "bankId": "sample-bank",
+      "title": "샘플 행정법 문제은행",
+      "version": "v1",
+      "subject": "행정법",
+      "description": "객관식/주관식 샘플 문제은행",
+      "questionCount": 4,
+      "manifestUrl": "./public/data/banks/sample-bank/v1/manifest.json",
+      "publishedAt": "2026-05-31T00:00:00+09:00"
+    }
+  ]
+}

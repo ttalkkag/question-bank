@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "1.0.0",
+  "bankId": "sample-bank",
+  "version": "v1",
+  "questions": [
+    {
+      "id": "sample-bank-v1-q000003",
+      "type": "single_choice",
+      "subject": "행정법",
+      "unit": "행정절차",
+      "difficulty": 1,
+      "stem": "행정절차법의 목적이 아닌 것은?",
+      "choices": [
+        { "id": "A", "text": "국민 권익 보호" },
+        { "id": "B", "text": "행정의 공정성 확보" },
+        { "id": "C", "text": "형사처벌 강화" },
+        { "id": "D", "text": "국민 참여 확대" }
+      ],
+      "answer": ["C"],
+      "explanation": "행정절차법 목적에는 형사처벌 강화가 포함되지 않는다.",
+      "tags": ["행정절차"],
+      "status": "published"
+    },
+    {
+      "id": "sample-bank-v1-q000004",
+      "type": "short_answer",
+      "subject": "행정법",
+      "unit": "행정행위",
+      "difficulty": 2,
+      "stem": "취소되기 전까지 유효로 통용되는 효력과 관련된 용어를 쓰시오.",
+      "answerText": "공정력",
+      "grading": {
+        "mode": "contains_all_groups",
+        "keywordGroups": [["공정력"], ["취소되기전", "취소전", "취소되기 전"]],
+        "normalization": {
+          "trim": true,
+          "lowercase": true,
+          "removeSpaces": true,
+          "removePunctuation": true
+        }
+      },
+      "explanation": "정답 핵심은 공정력과 취소 전 유효성이다.",
+      "tags": ["공정력"],
+      "status": "published"
+    }
+  ]
+}
