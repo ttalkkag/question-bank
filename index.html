@@ -7,80 +7,135 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <header class="header">
-      <h1>모의고사 문제은행</h1>
-      <div class="header-actions">
-        <input id="catalog-url" type="url" placeholder="외부 catalog.json URL (선택)" />
-        <button id="load-catalog-url">외부 목록 불러오기</button>
-        <label class="file-input-label">
-          로컬 JSON 불러오기
-          <input id="local-json-input" type="file" accept="application/json" />
-        </label>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Question Bank</p>
+        <h1>문제은행</h1>
       </div>
     </header>
 
-    <main class="container">
-      <section id="home-section" class="card">
-        <h2>문제은행 목록</h2>
-        <p id="home-error" class="error" hidden></p>
-        <div id="bank-list" class="list"></div>
-        <h3>최근 진행 기록</h3>
-        <div id="recent-progress"></div>
+    <main class="app-shell">
+      <section id="home-section" class="surface">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">JSON</p>
+            <h2>일회성 문제은행 불러오기</h2>
+          </div>
+        </div>
+        <p id="home-error" class="error" role="alert" hidden></p>
+
+        <section class="import-panel" aria-label="문제은행 JSON 불러오기">
+          <h3>문제은행 JSON</h3>
+          <label class="file-button inline-file-button">
+            JSON 파일 선택
+            <input id="local-json-input" type="file" accept="application/json,.json" />
+          </label>
+          <div class="import-row">
+            <label>
+              JSON URL
+              <input id="json-url-input" type="url" placeholder="https://example.com/sample_question_bank.json" />
+            </label>
+            <button id="load-json-url" type="button" class="secondary-button">URL 불러오기</button>
+          </div>
+          <label class="direct-json-label">
+            JSON 직접 입력
+            <textarea id="direct-json-input" rows="8" placeholder='{"bankId":"sample-bank","title":"샘플","questions":[]}'></textarea>
+          </label>
+          <div class="action-row">
+            <button id="load-direct-json" type="button" class="secondary-button">입력 JSON 불러오기</button>
+          </div>
+          <p id="url-state-status" class="muted" aria-live="polite"></p>
+        </section>
       </section>
 
-      <section id="bank-section" class="card" hidden>
-        <div class="section-header">
-          <h2 id="bank-title"></h2>
-          <button id="back-home">홈으로</button>
+      <section id="bank-section" class="surface" hidden>
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Bank</p>
+            <h2 id="bank-title"></h2>
+          </div>
+          <button id="back-home" type="button" class="ghost-button">홈으로</button>
         </div>
-        <p id="bank-description"></p>
-        <div class="layout">
-          <aside class="filters">
-            <h3>필터</h3>
-            <label>과목 <select id="filter-subject"></select></label>
-            <label>단원 <select id="filter-unit"></select></label>
-            <label>태그 <select id="filter-tag"></select></label>
-            <label>유형 <select id="filter-type"></select></label>
-            <label>난이도 <select id="filter-difficulty"></select></label>
-            <button id="reset-filters">필터 초기화</button>
+        <p id="bank-description" class="muted"></p>
+        <div id="bank-stats" class="stat-row"></div>
+
+        <div class="study-layout">
+          <aside class="filter-panel" aria-label="문제 필터">
+            <label>
+              과목
+              <select id="filter-subject"></select>
+            </label>
+            <label>
+              단원
+              <select id="filter-unit"></select>
+            </label>
+            <label>
+              태그
+              <select id="filter-tag"></select>
+            </label>
+            <label>
+              유형
+              <select id="filter-type"></select>
+            </label>
+            <label>
+              난이도
+              <select id="filter-difficulty"></select>
+            </label>
+            <button id="reset-filters" type="button" class="ghost-button">필터 초기화</button>
           </aside>
-          <div class="bank-actions">
-            <p id="filtered-count"></p>
-            <button id="start-random">랜덤 시작</button>
-            <button id="start-all">전체 시작</button>
-            <button id="start-wrong-only">오답만 다시 풀기</button>
+
+          <div class="action-panel">
+            <p id="filtered-count" class="count-text"></p>
+            <div class="action-grid">
+              <button id="start-all" type="button">전체 풀기</button>
+              <button id="start-random" type="button">랜덤 시작</button>
+            </div>
           </div>
         </div>
       </section>
 
-      <section id="quiz-section" class="card" hidden>
-        <div class="section-header">
-          <h2>문제 풀이</h2>
-          <button id="quit-quiz">종료</button>
+      <section id="quiz-section" class="surface quiz-surface" hidden>
+        <div class="section-title">
+          <div>
+            <p id="quiz-progress" class="eyebrow"></p>
+            <h2>문제 풀이</h2>
+          </div>
+          <button id="quit-quiz" type="button" class="ghost-button">나가기</button>
         </div>
-        <p id="quiz-progress"></p>
-        <p id="quiz-meta"></p>
-        <h3 id="question-stem"></h3>
-        <div id="question-input"></div>
-        <button id="grade-btn">정답 확인</button>
-        <div id="grade-result"></div>
-        <p id="explanation"></p>
+
+        <div id="question-meta" class="meta-row"></div>
+        <article class="question-body">
+          <h3 id="question-stem"></h3>
+          <div id="question-input" class="answer-area"></div>
+        </article>
+
+        <div class="feedback-panel">
+          <button id="grade-btn" type="button">채점</button>
+          <p id="grade-result" aria-live="polite"></p>
+          <p id="explanation" class="explanation"></p>
+        </div>
+
         <div class="nav-buttons">
-          <button id="prev-question">이전</button>
-          <button id="next-question">다음</button>
-          <button id="finish-quiz">결과 보기</button>
+          <button id="prev-question" type="button" class="ghost-button">이전</button>
+          <button id="next-question" type="button" class="ghost-button">다음</button>
+          <button id="finish-quiz" type="button" class="secondary-button">결과 보기</button>
         </div>
       </section>
 
-      <section id="result-section" class="card" hidden>
-        <div class="section-header">
-          <h2>결과 요약</h2>
-          <button id="result-home">홈으로</button>
+      <section id="result-section" class="surface" hidden>
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Result</p>
+            <h2>결과</h2>
+          </div>
+          <button id="result-home" type="button" class="ghost-button">홈으로</button>
         </div>
-        <div id="result-summary"></div>
+        <div id="result-summary" class="stat-row"></div>
         <h3>틀린 문제</h3>
-        <ul id="wrong-list"></ul>
-        <button id="retry-wrong">틀린 문제 다시 풀기</button>
+        <div id="wrong-list" class="compact-list"></div>
+        <div class="action-row">
+          <button id="retry-wrong" type="button" class="secondary-button">틀린 문제 다시 풀기</button>
+        </div>
       </section>
     </main>
 

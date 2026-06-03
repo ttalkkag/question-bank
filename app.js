@@ -1,506 +1,820 @@
-const DEFAULT_CATALOG_URL = "./public/data/catalog.json";
+(function initQuestionBank(root) {
+  const QUESTION_TYPES = ["single_choice", "short_answer"];
+  const SESSION_BANK_STORAGE_KEY = "question-bank:session-bank";
 
-const state = {
-  catalog: null,
-  activeBankMeta: null,
-  activeManifest: null,
-  allQuestions: [],
-  filteredQuestions: [],
-  quizQuestions: [],
-  answers: {},
-  currentIndex: 0,
-};
-
-const el = {
-  homeSection: document.getElementById("home-section"),
-  bankSection: document.getElementById("bank-section"),
-  quizSection: document.getElementById("quiz-section"),
-  resultSection: document.getElementById("result-section"),
-  homeError: document.getElementById("home-error"),
-  bankList: document.getElementById("bank-list"),
-  recentProgress: document.getElementById("recent-progress"),
-  catalogUrl: document.getElementById("catalog-url"),
-  loadCatalogUrl: document.getElementById("load-catalog-url"),
-  localJsonInput: document.getElementById("local-json-input"),
-  bankTitle: document.getElementById("bank-title"),
-  bankDescription: document.getElementById("bank-description"),
-  filterSubject: document.getElementById("filter-subject"),
-  filterUnit: document.getElementById("filter-unit"),
-  filterTag: document.getElementById("filter-tag"),
-  filterType: document.getElementById("filter-type"),
-  filterDifficulty: document.getElementById("filter-difficulty"),
-  filteredCount: document.getElementById("filtered-count"),
-  startRandom: document.getElementById("start-random"),
-  startAll: document.getElementById("start-all"),
-  startWrongOnly: document.getElementById("start-wrong-only"),
-  resetFilters: document.getElementById("reset-filters"),
-  backHome: document.getElementById("back-home"),
-  quizProgress: document.getElementById("quiz-progress"),
-  quizMeta: document.getElementById("quiz-meta"),
-  questionStem: document.getElementById("question-stem"),
-  questionInput: document.getElementById("question-input"),
-  gradeBtn: document.getElementById("grade-btn"),
-  gradeResult: document.getElementById("grade-result"),
-  explanation: document.getElementById("explanation"),
-  prevQuestion: document.getElementById("prev-question"),
-  nextQuestion: document.getElementById("next-question"),
-  finishQuiz: document.getElementById("finish-quiz"),
-  quitQuiz: document.getElementById("quit-quiz"),
-  resultSummary: document.getElementById("result-summary"),
-  wrongList: document.getElementById("wrong-list"),
-  retryWrong: document.getElementById("retry-wrong"),
-  resultHome: document.getElementById("result-home"),
-};
-
-function showSection(section) {
-  [el.homeSection, el.bankSection, el.quizSection, el.resultSection].forEach((s) => (s.hidden = true));
-  section.hidden = false;
-}
-
-function storageKey(prefix) {
-  return `${prefix}:${state.activeManifest.bankId}:${state.activeManifest.version}`;
-}
-
-function normalizeAnswerText(input, normalization) {
-  let value = String(input ?? "");
-  if (normalization?.trim ?? true) value = value.trim();
-  if (normalization?.lowercase ?? true) value = value.toLowerCase();
-  if (normalization?.removeSpaces ?? true) value = value.replace(/\s+/g, "");
-  if (normalization?.removePunctuation ?? true) {
-    value = value.replace(/[.,!?;:'"“”‘’()\[\]{}<>\-_/\\]/g, "");
-  }
-  return value;
-}
-
-function gradeSingleChoice(question, selectedChoiceId) {
-  return {
-    isCorrect: question.answer?.[0] === selectedChoiceId,
-    matchedKeywords: [],
-    missingKeywordGroups: [],
-  };
-}
-
-function gradeShortAnswer(question, answerText) {
-  const grading = question.grading || { mode: "contains_all_groups", keywordGroups: [[question.answerText || ""]] };
-  const normalizedInput = normalizeAnswerText(answerText, grading.normalization);
-  const matchedKeywords = [];
-  const missingKeywordGroups = [];
-
-  for (const group of grading.keywordGroups || []) {
-    const matched = group.find((kw) => normalizedInput.includes(normalizeAnswerText(kw, grading.normalization)));
-    if (matched) {
-      matchedKeywords.push(matched);
-    } else {
-      missingKeywordGroups.push(group);
+  function normalizeAnswerText(input, normalization = {}) {
+    const options = {
+      trim: true,
+      lowercase: true,
+      removeSpaces: false,
+      removePunctuation: false,
+      ...normalization,
+    };
+    let value = String(input ?? "");
+    if (options.trim) value = value.trim();
+    if (options.lowercase) value = value.toLowerCase();
+    value = options.removeSpaces ? value.replace(/\s+/g, "") : value.replace(/\s+/g, " ");
+    if (options.removePunctuation) {
+      value = value.replace(/[.,!?;:'"“”‘’()[\]{}<>\-_/\\]/g, "");
     }
+    return value;
   }
 
-  return {
-    isCorrect: grading.mode === "contains_all_groups" && missingKeywordGroups.length === 0,
-    matchedKeywords,
-    missingKeywordGroups,
-  };
-}
-
-function validateQuestion(question) {
-  if (!question?.id || !question?.type || !question?.stem) return "질문 공통 필드가 누락되었습니다.";
-  if (!["single_choice", "short_answer"].includes(question.type)) return "허용되지 않은 문제 타입입니다.";
-  if (question.type === "single_choice") {
-    if (!Array.isArray(question.choices) || question.choices.length !== 4) return "객관식 보기는 4개여야 합니다.";
-    const ids = question.choices.map((c) => c.id);
-    if (!Array.isArray(question.answer) || !ids.includes(question.answer[0])) return "객관식 정답이 보기 id와 일치하지 않습니다.";
-  }
-  if (question.type === "short_answer") {
-    if (!question.grading?.keywordGroups?.length) return "주관식 keywordGroups가 비어 있습니다.";
-  }
-  return null;
-}
-
-function setOptions(selectEl, values, includeAll = true) {
-  const uniqueValues = [...new Set(values.filter(Boolean))];
-  selectEl.innerHTML = "";
-  if (includeAll) {
-    const allOpt = document.createElement("option");
-    allOpt.value = "";
-    allOpt.textContent = "전체";
-    selectEl.appendChild(allOpt);
-  }
-  uniqueValues.sort().forEach((value) => {
-    const opt = document.createElement("option");
-    opt.value = String(value);
-    opt.textContent = String(value);
-    selectEl.appendChild(opt);
-  });
-}
-
-function applyFilters() {
-  const subject = el.filterSubject.value;
-  const unit = el.filterUnit.value;
-  const tag = el.filterTag.value;
-  const type = el.filterType.value;
-  const difficulty = el.filterDifficulty.value;
-
-  state.filteredQuestions = state.allQuestions.filter((q) => {
-    if (subject && q.subject !== subject) return false;
-    if (unit && (q.unit || "") !== unit) return false;
-    if (tag && !(q.tags || []).includes(tag)) return false;
-    if (type && q.type !== type) return false;
-    if (difficulty && String(q.difficulty || "") !== difficulty) return false;
-    return true;
-  });
-
-  el.filteredCount.textContent = `필터 적용 문제 수: ${state.filteredQuestions.length}`;
-}
-
-function renderBank() {
-  const questions = state.allQuestions;
-  setOptions(el.filterSubject, questions.map((q) => q.subject));
-  setOptions(el.filterUnit, questions.map((q) => q.unit || ""));
-  setOptions(el.filterTag, questions.flatMap((q) => q.tags || []));
-  setOptions(el.filterType, questions.map((q) => q.type));
-  setOptions(el.filterDifficulty, questions.map((q) => (q.difficulty ? String(q.difficulty) : "")));
-  applyFilters();
-}
-
-function renderQuestion() {
-  const question = state.quizQuestions[state.currentIndex];
-  const saved = state.answers[question.id] || {};
-  el.quizProgress.textContent = `${state.currentIndex + 1} / ${state.quizQuestions.length}`;
-  el.quizMeta.textContent = `유형: ${question.type} | 난이도: ${question.difficulty || "-"}`;
-  el.questionStem.textContent = question.stem;
-  el.questionInput.innerHTML = "";
-
-  if (question.type === "single_choice") {
-    question.choices.forEach((choice) => {
-      const label = document.createElement("label");
-      label.className = "choice";
-      const input = document.createElement("input");
-      input.type = "radio";
-      input.name = "choice";
-      input.value = choice.id;
-      input.checked = saved.answer?.[0] === choice.id;
-      label.appendChild(input);
-      label.append(` ${choice.id}. ${choice.text}`);
-      el.questionInput.appendChild(label);
-    });
-  } else {
-    const input = document.createElement("input");
-    input.type = "text";
-    input.id = "short-answer";
-    input.placeholder = "답안을 입력하세요";
-    input.value = saved.answerText || "";
-    el.questionInput.appendChild(input);
+  function normalizeAnswerArray(value) {
+    if (!Array.isArray(value)) return [];
+    return value.map((item) => String(item ?? "").trim()).filter(Boolean);
   }
 
-  el.gradeResult.textContent = "";
-  el.explanation.textContent = "";
-}
-
-function saveProgress() {
-  const payload = {
-    bankId: state.activeManifest.bankId,
-    version: state.activeManifest.version,
-    updatedAt: new Date().toISOString(),
-    answers: state.answers,
-  };
-  localStorage.setItem(storageKey("qb:progress"), JSON.stringify(payload));
-
-  const wrongQuestionIds = Object.entries(state.answers)
-    .filter(([, v]) => v.isCorrect === false)
-    .map(([id]) => id);
-  localStorage.setItem(storageKey("qb:wrong-notes"), JSON.stringify({ wrongQuestionIds, updatedAt: payload.updatedAt }));
-}
-
-function loadProgress() {
-  try {
-    const stored = localStorage.getItem(storageKey("qb:progress"));
-    state.answers = stored ? JSON.parse(stored).answers || {} : {};
-  } catch {
-    state.answers = {};
-  }
-}
-
-function renderResult() {
-  const total = state.quizQuestions.length;
-  const entries = state.quizQuestions.map((q) => state.answers[q.id]).filter(Boolean);
-  const correct = entries.filter((a) => a.isCorrect).length;
-  const rate = total ? ((correct / total) * 100).toFixed(1) : "0.0";
-
-  const byType = ["single_choice", "short_answer"].map((type) => {
-    const group = state.quizQuestions.filter((q) => q.type === type);
-    const c = group.filter((q) => state.answers[q.id]?.isCorrect).length;
-    return { type, total: group.length, correct: c };
-  });
-
-  el.resultSummary.innerHTML = `
-    <p>총 문제 수: ${total}</p>
-    <p>정답 수: ${correct}</p>
-    <p>정답률: ${rate}%</p>
-    ${byType
-      .map((g) => `<p>${g.type}: ${g.total ? ((g.correct / g.total) * 100).toFixed(1) : "0.0"}% (${g.correct}/${g.total})</p>`)
-      .join("")}
-  `;
-
-  const wrong = state.quizQuestions.filter((q) => state.answers[q.id] && state.answers[q.id].isCorrect === false);
-  el.wrongList.innerHTML = "";
-  wrong.forEach((q) => {
-    const li = document.createElement("li");
-    li.textContent = `${q.id} - ${q.stem}`;
-    el.wrongList.appendChild(li);
-  });
-  el.retryWrong.disabled = wrong.length === 0;
-}
-
-function startQuiz(questions) {
-  if (!questions.length) {
-    alert("풀이할 문제가 없습니다.");
-    return;
-  }
-  state.quizQuestions = questions;
-  state.currentIndex = 0;
-  loadProgress();
-  showSection(el.quizSection);
-  renderQuestion();
-}
-
-async function loadBankFromMeta(meta) {
-  const manifestRes = await fetch(meta.manifestUrl);
-  if (!manifestRes.ok) throw new Error("manifest.json을 불러오지 못했습니다.");
-  const manifest = await manifestRes.json();
-
-  if (!Array.isArray(manifest.questionFiles)) throw new Error("manifest.questionFiles 형식이 잘못되었습니다.");
-
-  const base = meta.manifestUrl.slice(0, meta.manifestUrl.lastIndexOf("/") + 1);
-  const allQuestions = [];
-
-  for (const filename of manifest.questionFiles) {
-    const fileRes = await fetch(`${base}${filename}`);
-    if (!fileRes.ok) throw new Error(`${filename} 파일을 불러오지 못했습니다.`);
-    const chunk = await fileRes.json();
-    if (!Array.isArray(chunk.questions)) throw new Error(`${filename} questions 형식 오류`);
-    allQuestions.push(...chunk.questions);
+  function sameAnswerSet(left, right) {
+    const a = normalizeAnswerArray(left).sort();
+    const b = normalizeAnswerArray(right).sort();
+    return a.length === b.length && a.every((item, index) => item === b[index]);
   }
 
-  const published = allQuestions.filter((q) => (q.status || "published") === "published");
-  for (const question of published) {
-    const validationError = validateQuestion(question);
-    if (validationError) throw new Error(`${question.id || "unknown"}: ${validationError}`);
+  function gradeSingleChoice(question, selectedAnswer) {
+    const selected = Array.isArray(selectedAnswer) ? selectedAnswer : [selectedAnswer];
+    return {
+      isCorrect: sameAnswerSet(selected, question.answer),
+      selectedAnswer: normalizeAnswerArray(selected),
+      correctAnswer: normalizeAnswerArray(question.answer),
+    };
   }
 
-  state.activeBankMeta = meta;
-  state.activeManifest = manifest;
-  state.allQuestions = published;
-  state.filteredQuestions = published;
-  loadProgress();
+  function getShortAnswerGroups(question) {
+    if (Array.isArray(question.grading?.keywordGroups) && question.grading.keywordGroups.length) {
+      return question.grading.keywordGroups.map(normalizeAnswerArray).filter((group) => group.length);
+    }
+    const accepted = normalizeAnswerArray(question.acceptedKeywords);
+    if (accepted.length) return [accepted];
+    const answers = normalizeAnswerArray(question.answer);
+    if (answers.length) return [answers];
+    const answerText = normalizeAnswerArray([question.answerText]);
+    return answerText.length ? [answerText] : [];
+  }
 
-  el.bankTitle.textContent = manifest.title;
-  el.bankDescription.textContent = manifest.description || "";
-  renderBank();
-  showSection(el.bankSection);
-}
+  function getShortAnswerCandidates(question) {
+    return getShortAnswerGroups(question).flat();
+  }
 
-function renderCatalog() {
-  el.bankList.innerHTML = "";
-  (state.catalog?.banks || []).forEach((bank) => {
-    const div = document.createElement("div");
-    div.className = "bank-item";
-    div.innerHTML = `
-      <strong>${bank.title}</strong>
-      <p>${bank.subject} / ${bank.version} / ${bank.questionCount}문항</p>
-      <p>${bank.description || ""}</p>
-      <button>이 문제은행 시작</button>
-    `;
-    div.querySelector("button").addEventListener("click", async () => {
-      try {
-        await loadBankFromMeta(bank);
-      } catch (error) {
-        alert(error.message);
+  function gradeShortAnswer(question, textAnswer) {
+    const normalization = question.grading?.normalization || {};
+    const normalizedInput = normalizeAnswerText(textAnswer, normalization);
+    const groups = getShortAnswerGroups(question);
+
+    if (!normalizedInput) {
+      return {
+        isCorrect: false,
+        textAnswer: String(textAnswer ?? ""),
+        matchedKeywords: [],
+        missingKeywords: groups.map((group) => group.join(" 또는 ")),
+        correctAnswer: normalizeAnswerArray(question.answer),
+      };
+    }
+
+    const matchedKeywords = [];
+    const missingKeywords = [];
+
+    groups.forEach((group) => {
+      const matched = group.find((keyword) => {
+        const normalizedKeyword = normalizeAnswerText(keyword, normalization);
+        return normalizedKeyword && normalizedInput.includes(normalizedKeyword);
+      });
+      if (matched) {
+        matchedKeywords.push(matched);
+      } else {
+        missingKeywords.push(group.join(" 또는 "));
       }
     });
-    el.bankList.appendChild(div);
-  });
-}
 
-function renderRecentProgress() {
-  const keys = Object.keys(localStorage).filter((k) => k.startsWith("qb:progress:"));
-  if (!keys.length) {
-    el.recentProgress.textContent = "최근 진행 기록이 없습니다.";
-    return;
-  }
-  const items = keys
-    .map((k) => {
-      try {
-        return JSON.parse(localStorage.getItem(k));
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean)
-    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-
-  el.recentProgress.innerHTML = items
-    .slice(0, 5)
-    .map((item) => `<p>${item.bankId}/${item.version} - ${item.updatedAt}</p>`)
-    .join("");
-}
-
-async function loadCatalog(url = DEFAULT_CATALOG_URL) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("catalog.json을 불러오지 못했습니다.");
-  const json = await res.json();
-  if (!Array.isArray(json.banks)) throw new Error("catalog.json 형식이 잘못되었습니다.");
-  state.catalog = json;
-  renderCatalog();
-  renderRecentProgress();
-}
-
-function parseLocalBankJSON(raw) {
-  const json = JSON.parse(raw);
-  if (!json || !Array.isArray(json.questions)) {
-    throw new Error("로컬 JSON은 questions 배열이 필요합니다.");
-  }
-  const bankId = json.bankId || "local-bank";
-  const version = json.version || "local";
-  state.activeBankMeta = { bankId, version };
-  state.activeManifest = {
-    bankId,
-    version,
-    title: json.title || `Local ${bankId}`,
-    description: json.description || "로컬 업로드 문제은행",
-  };
-
-  const published = json.questions.filter((q) => (q.status || "published") === "published");
-  for (const question of published) {
-    const validationError = validateQuestion(question);
-    if (validationError) throw new Error(`${question.id || "unknown"}: ${validationError}`);
+    return {
+      isCorrect: groups.length > 0 && missingKeywords.length === 0,
+      textAnswer: String(textAnswer ?? ""),
+      matchedKeywords,
+      missingKeywords,
+      correctAnswer: normalizeAnswerArray(question.answer),
+    };
   }
 
-  state.allQuestions = published;
-  state.filteredQuestions = published;
-  loadProgress();
-  el.bankTitle.textContent = state.activeManifest.title;
-  el.bankDescription.textContent = state.activeManifest.description;
-  renderBank();
-  showSection(el.bankSection);
-}
-
-el.loadCatalogUrl.addEventListener("click", async () => {
-  const url = el.catalogUrl.value.trim();
-  if (!url) return;
-  try {
-    await loadCatalog(url);
-    el.homeError.hidden = true;
-  } catch (error) {
-    el.homeError.textContent = error.message;
-    el.homeError.hidden = false;
+  function hasText(value) {
+    return typeof value === "string" && value.trim().length > 0;
   }
-});
 
-el.localJsonInput.addEventListener("change", async (event) => {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  try {
-    parseLocalBankJSON(await file.text());
-  } catch (error) {
-    alert(`로컬 JSON 오류: ${error.message}`);
-  } finally {
-    event.target.value = "";
-  }
-});
-
-[el.filterSubject, el.filterUnit, el.filterTag, el.filterType, el.filterDifficulty].forEach((node) => {
-  node.addEventListener("change", applyFilters);
-});
-
-el.resetFilters.addEventListener("click", () => {
-  [el.filterSubject, el.filterUnit, el.filterTag, el.filterType, el.filterDifficulty].forEach((node) => {
-    node.value = "";
-  });
-  applyFilters();
-});
-
-el.startAll.addEventListener("click", () => startQuiz([...state.filteredQuestions]));
-el.startRandom.addEventListener("click", () => {
-  const randomQuestions = [...state.filteredQuestions].sort(() => Math.random() - 0.5);
-  startQuiz(randomQuestions);
-});
-el.startWrongOnly.addEventListener("click", () => {
-  const wrong = state.filteredQuestions.filter((q) => state.answers[q.id]?.isCorrect === false);
-  startQuiz(wrong);
-});
-
-el.gradeBtn.addEventListener("click", () => {
-  const question = state.quizQuestions[state.currentIndex];
-  let answerPayload;
-  let grade;
-
-  if (question.type === "single_choice") {
-    const checked = document.querySelector('input[name="choice"]:checked');
-    if (!checked) {
-      alert("보기를 선택하세요.");
+  function validateChoice(choice, label, errors) {
+    if (!choice || typeof choice !== "object") {
+      errors.push(`${label}: 보기는 객체여야 합니다.`);
       return;
     }
-    grade = gradeSingleChoice(question, checked.value);
-    answerPayload = { answer: [checked.value], ...grade, answeredAt: new Date().toISOString() };
-  } else {
-    const input = document.getElementById("short-answer");
-    const answerText = input.value || "";
-    grade = gradeShortAnswer(question, answerText);
-    answerPayload = { answerText, ...grade, answeredAt: new Date().toISOString() };
+    if (!hasText(choice.id)) errors.push(`${label}: 보기 id가 필요합니다.`);
+    if (!hasText(choice.text)) errors.push(`${label}: 보기 text가 필요합니다.`);
   }
 
-  state.answers[question.id] = answerPayload;
-  saveProgress();
+  function validateQuestion(question, index = 0) {
+    const errors = [];
+    const label = question?.id || `questions[${index}]`;
 
-  el.gradeResult.className = answerPayload.isCorrect ? "correct" : "wrong";
-  if (question.type === "short_answer") {
-    const missing = answerPayload.missingKeywordGroups.map((group) => `[${group.join("/")}]`).join(", ");
-    el.gradeResult.textContent = `${answerPayload.isCorrect ? "정답" : "오답"} | 매칭: ${answerPayload.matchedKeywords.join(", ") || "없음"} | 누락: ${missing || "없음"}`;
-  } else {
-    el.gradeResult.textContent = answerPayload.isCorrect ? "정답" : "오답";
+    if (!question || typeof question !== "object" || Array.isArray(question)) {
+      return [`${label}: 문제는 객체여야 합니다.`];
+    }
+    if (!hasText(question.id)) errors.push(`${label}: id가 필요합니다.`);
+    if (!hasText(question.type)) errors.push(`${label}: type이 필요합니다.`);
+    if (!QUESTION_TYPES.includes(question.type)) errors.push(`${label}: type은 single_choice 또는 short_answer여야 합니다.`);
+    if (!hasText(question.stem)) errors.push(`${label}: stem이 필요합니다.`);
+
+    const hasLegacyShortAnswer =
+      question.type === "short_answer" && hasText(question.answerText) && Array.isArray(question.grading?.keywordGroups);
+    if (!Array.isArray(question.answer) && !hasLegacyShortAnswer) {
+      errors.push(`${label}: answer 배열이 필요합니다.`);
+    }
+
+    if (question.type === "single_choice") {
+      if (!Array.isArray(question.choices) || question.choices.length !== 4) {
+        errors.push(`${label}: single_choice 문제는 4개의 choices가 필요합니다.`);
+      } else {
+        question.choices.forEach((choice, choiceIndex) => validateChoice(choice, `${label}.choices[${choiceIndex}]`, errors));
+      }
+
+      const choiceIds = Array.isArray(question.choices) ? question.choices.map((choice) => choice.id) : [];
+      const answers = normalizeAnswerArray(question.answer);
+      if (!answers.length) errors.push(`${label}: single_choice 정답이 필요합니다.`);
+      answers.forEach((answer) => {
+        if (!choiceIds.includes(answer)) errors.push(`${label}: 정답 ${answer}이 choices id와 일치하지 않습니다.`);
+      });
+    }
+
+    if (question.type === "short_answer") {
+      if (question.answer !== undefined && !Array.isArray(question.answer)) {
+        errors.push(`${label}: answer는 배열이어야 합니다.`);
+      }
+      if (question.acceptedKeywords !== undefined && !Array.isArray(question.acceptedKeywords)) {
+        errors.push(`${label}: acceptedKeywords는 배열이어야 합니다.`);
+      }
+      if (question.grading?.keywordGroups !== undefined && !Array.isArray(question.grading.keywordGroups)) {
+        errors.push(`${label}: grading.keywordGroups는 배열이어야 합니다.`);
+      }
+      if (!getShortAnswerCandidates(question).length) {
+        errors.push(`${label}: short_answer 문제는 answer 또는 acceptedKeywords 값이 필요합니다.`);
+      }
+    }
+
+    return errors;
   }
-  el.explanation.textContent = `해설: ${question.explanation || "(해설 없음)"}`;
-});
 
-el.prevQuestion.addEventListener("click", () => {
-  if (state.currentIndex > 0) {
-    state.currentIndex -= 1;
+  function validateBank(bank) {
+    const errors = [];
+    if (!bank || typeof bank !== "object" || Array.isArray(bank)) {
+      return { valid: false, errors: ["문제은행 JSON은 객체여야 합니다."] };
+    }
+    if (!hasText(bank.bankId)) errors.push("bankId가 필요합니다.");
+    if (!hasText(bank.title)) errors.push("title이 필요합니다.");
+    if (!Array.isArray(bank.questions)) {
+      errors.push("questions 배열이 필요합니다.");
+    } else {
+      bank.questions.forEach((question, index) => errors.push(...validateQuestion(question, index)));
+    }
+    return { valid: errors.length === 0, errors };
+  }
+
+  function bankVersion(bank) {
+    return hasText(bank?.version) ? bank.version : "v1";
+  }
+
+  function parseBankJson(raw) {
+    let bank;
+    try {
+      bank = JSON.parse(raw);
+    } catch {
+      throw new Error("JSON 문법이 올바르지 않습니다.");
+    }
+    const validation = validateBank(bank);
+    if (!validation.valid) throw new Error(validation.errors.slice(0, 6).join("\n"));
+    return { ...bank, version: bankVersion(bank) };
+  }
+
+  function encodeBankForUrl(bank) {
+    return encodeURIComponent(JSON.stringify(bank));
+  }
+
+  function decodeBankFromUrl(encoded) {
+    let raw;
+    try {
+      raw = decodeURIComponent(encoded);
+    } catch {
+      throw new Error("URL에 저장된 JSON을 복원하지 못했습니다.");
+    }
+    return parseBankJson(raw);
+  }
+
+  function buildInlineBankHash(bank) {
+    return `#bank=${encodeBankForUrl(bank)}`;
+  }
+
+  function buildRemoteBankHash(url) {
+    return `#bankUrl=${encodeURIComponent(String(url).trim())}`;
+  }
+
+  function rawParamFromLocationPart(value, name) {
+    const text = String(value || "").replace(/^[#?]/, "");
+    if (!text) return null;
+    for (const pair of text.split("&")) {
+      const [rawKey, ...rawValueParts] = pair.split("=");
+      if (decodeURIComponent(rawKey.replace(/\+/g, " ")) === name) {
+        return rawValueParts.join("=");
+      }
+    }
+    return null;
+  }
+
+  function readBankSourceFromUrl(locationLike) {
+    const hash = locationLike?.hash || "";
+    const search = locationLike?.search || "";
+    const hashHasSource = rawParamFromLocationPart(hash, "bank") !== null || rawParamFromLocationPart(hash, "bankUrl") !== null;
+    const sourcePart = hashHasSource ? hash : search;
+    const encodedBank = rawParamFromLocationPart(sourcePart, "bank");
+
+    if (encodedBank !== null) {
+      return { kind: "inline", bank: decodeBankFromUrl(encodedBank) };
+    }
+
+    const encodedUrl = rawParamFromLocationPart(sourcePart, "bankUrl");
+    if (encodedUrl !== null) {
+      let url;
+      try {
+        url = decodeURIComponent(encodedUrl);
+      } catch {
+        throw new Error("문제은행 JSON URL을 복원하지 못했습니다.");
+      }
+      if (!hasText(url)) throw new Error("문제은행 JSON URL이 비어 있습니다.");
+      return { kind: "url", url };
+    }
+
+    return null;
+  }
+
+  function saveBankToSessionStorage(storage, bank) {
+    if (!storage) return false;
+    try {
+      storage.setItem(SESSION_BANK_STORAGE_KEY, JSON.stringify(bank));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function readBankSourceFromSessionStorage(storage) {
+    if (!storage) return null;
+    let raw;
+    try {
+      raw = storage.getItem(SESSION_BANK_STORAGE_KEY);
+    } catch {
+      return null;
+    }
+    if (!hasText(raw)) return null;
+    return { kind: "session", bank: parseBankJson(raw) };
+  }
+
+  function clearBankFromSessionStorage(storage) {
+    if (!storage) return false;
+    try {
+      storage.removeItem(SESSION_BANK_STORAGE_KEY);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function formatQuestionType(type) {
+    return type === "single_choice" ? "사지선다" : "주관식";
+  }
+
+  function formatCorrectAnswer(question) {
+    if (question.type === "single_choice") return normalizeAnswerArray(question.answer).join(", ");
+    return normalizeAnswerArray(question.answer).join(", ") || getShortAnswerCandidates(question).join(", ");
+  }
+
+  const core = {
+    normalizeAnswerText,
+    gradeSingleChoice,
+    gradeShortAnswer,
+    getShortAnswerCandidates,
+    validateQuestion,
+    validateBank,
+    parseBankJson,
+    encodeBankForUrl,
+    decodeBankFromUrl,
+    buildInlineBankHash,
+    buildRemoteBankHash,
+    readBankSourceFromUrl,
+    saveBankToSessionStorage,
+    readBankSourceFromSessionStorage,
+    clearBankFromSessionStorage,
+    formatQuestionType,
+    formatCorrectAnswer,
+    bankVersion,
+  };
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = core;
+  }
+
+  if (typeof root !== "undefined") {
+    root.QuestionBankCore = core;
+  }
+
+  if (typeof document === "undefined") return;
+
+  const state = {
+    activeBank: null,
+    allQuestions: [],
+    filteredQuestions: [],
+    quizQuestions: [],
+    answersById: {},
+    sessionAnsweredIds: new Set(),
+    currentIndex: 0,
+  };
+
+  const el = {
+    homeSection: document.getElementById("home-section"),
+    bankSection: document.getElementById("bank-section"),
+    quizSection: document.getElementById("quiz-section"),
+    resultSection: document.getElementById("result-section"),
+    homeError: document.getElementById("home-error"),
+    localJsonInput: document.getElementById("local-json-input"),
+    jsonUrlInput: document.getElementById("json-url-input"),
+    loadJsonUrl: document.getElementById("load-json-url"),
+    directJsonInput: document.getElementById("direct-json-input"),
+    loadDirectJson: document.getElementById("load-direct-json"),
+    urlStateStatus: document.getElementById("url-state-status"),
+    bankTitle: document.getElementById("bank-title"),
+    bankDescription: document.getElementById("bank-description"),
+    bankStats: document.getElementById("bank-stats"),
+    filterSubject: document.getElementById("filter-subject"),
+    filterUnit: document.getElementById("filter-unit"),
+    filterTag: document.getElementById("filter-tag"),
+    filterType: document.getElementById("filter-type"),
+    filterDifficulty: document.getElementById("filter-difficulty"),
+    filteredCount: document.getElementById("filtered-count"),
+    startAll: document.getElementById("start-all"),
+    startRandom: document.getElementById("start-random"),
+    resetFilters: document.getElementById("reset-filters"),
+    backHome: document.getElementById("back-home"),
+    quizProgress: document.getElementById("quiz-progress"),
+    questionMeta: document.getElementById("question-meta"),
+    questionStem: document.getElementById("question-stem"),
+    questionInput: document.getElementById("question-input"),
+    gradeBtn: document.getElementById("grade-btn"),
+    gradeResult: document.getElementById("grade-result"),
+    explanation: document.getElementById("explanation"),
+    prevQuestion: document.getElementById("prev-question"),
+    nextQuestion: document.getElementById("next-question"),
+    finishQuiz: document.getElementById("finish-quiz"),
+    quitQuiz: document.getElementById("quit-quiz"),
+    resultSummary: document.getElementById("result-summary"),
+    wrongList: document.getElementById("wrong-list"),
+    retryWrong: document.getElementById("retry-wrong"),
+    resultHome: document.getElementById("result-home"),
+  };
+
+  function showSection(section) {
+    [el.homeSection, el.bankSection, el.quizSection, el.resultSection].forEach((node) => {
+      node.hidden = true;
+    });
+    section.hidden = false;
+  }
+
+  function createNode(tagName, className, text) {
+    const node = document.createElement(tagName);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function setError(message) {
+    el.homeError.textContent = message;
+    el.homeError.hidden = !message;
+  }
+
+  function setUrlStateStatus(message) {
+    el.urlStateStatus.textContent = message;
+  }
+
+  function loadProgress() {
+    state.answersById = {};
+  }
+
+  function saveAnswerRecord(record) {
+    state.answersById[record.questionId] = record;
+  }
+
+  function statNode(label, value) {
+    const node = createNode("div", "stat");
+    node.append(createNode("strong", "", String(value)));
+    node.append(createNode("span", "", label));
+    return node;
+  }
+
+  function renderBankStats() {
+    const records = Object.values(state.answersById);
+    const correct = records.filter((record) => record.isCorrect).length;
+    const answered = records.length;
+    const rate = answered ? `${Math.round((correct / answered) * 100)}%` : "0%";
+
+    el.bankStats.replaceChildren(
+      statNode("문항", state.allQuestions.length),
+      statNode("풀이", answered),
+      statNode("정답률", rate),
+    );
+  }
+
+  function setOptions(selectEl, values) {
+    const unique = [...new Set(values.filter((value) => value !== undefined && value !== null && String(value).trim() !== ""))];
+    selectEl.replaceChildren();
+    selectEl.append(new Option("전체", ""));
+    unique.sort((a, b) => String(a).localeCompare(String(b), "ko")).forEach((value) => {
+      selectEl.append(new Option(String(value), String(value)));
+    });
+  }
+
+  function applyFilters() {
+    const subject = el.filterSubject.value;
+    const unit = el.filterUnit.value;
+    const tag = el.filterTag.value;
+    const type = el.filterType.value;
+    const difficulty = el.filterDifficulty.value;
+
+    state.filteredQuestions = state.allQuestions.filter((question) => {
+      if (subject && question.subject !== subject) return false;
+      if (unit && (question.unit || "") !== unit) return false;
+      if (tag && !(question.tags || []).includes(tag)) return false;
+      if (type && question.type !== type) return false;
+      if (difficulty && String(question.difficulty || "") !== difficulty) return false;
+      return true;
+    });
+
+    el.filteredCount.textContent = `${state.filteredQuestions.length}문항 선택됨`;
+  }
+
+  function renderBankFilters() {
+    setOptions(el.filterSubject, state.allQuestions.map((question) => question.subject));
+    setOptions(el.filterUnit, state.allQuestions.map((question) => question.unit));
+    setOptions(el.filterTag, state.allQuestions.flatMap((question) => question.tags || []));
+    setOptions(el.filterType, state.allQuestions.map((question) => question.type));
+    setOptions(el.filterDifficulty, state.allQuestions.map((question) => question.difficulty));
+    applyFilters();
+  }
+
+  function activateBank(bank, options = {}) {
+    const validation = validateBank(bank);
+    if (!validation.valid) {
+      throw new Error(validation.errors.slice(0, 6).join("\n"));
+    }
+
+    state.activeBank = { ...bank, version: bankVersion(bank) };
+    state.allQuestions = bank.questions.filter((question) => (question.status || "published") === "published");
+    state.filteredQuestions = [...state.allQuestions];
+    loadProgress();
+
+    el.bankTitle.textContent = state.activeBank.title;
+    el.bankDescription.textContent = state.activeBank.description || `${state.activeBank.subject || "공통"} / ${bankVersion(state.activeBank)}`;
+    renderBankStats();
+    renderBankFilters();
+
+    if (options.show !== false) showSection(el.bankSection);
+  }
+
+  async function fetchText(url, errorLabel) {
+    let response;
+    try {
+      response = await fetch(url);
+    } catch {
+      throw new Error(`${errorLabel}을 불러오지 못했습니다. URL 또는 CORS 설정을 확인하세요.`);
+    }
+    if (!response.ok) throw new Error(`${errorLabel}을 불러오지 못했습니다. HTTP ${response.status}`);
+    return response.text();
+  }
+
+  function replaceUrlHash(hash) {
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${hash}`);
+  }
+
+  function currentSessionStorage() {
+    try {
+      return window.sessionStorage;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveCurrentBankSession(bank) {
+    return saveBankToSessionStorage(currentSessionStorage(), bank);
+  }
+
+  function persistInlineBankSource(bank) {
+    const hash = buildInlineBankHash(bank);
+    replaceUrlHash(hash);
+    setUrlStateStatus("현재 문제은행 JSON을 URL에 저장했습니다.");
+  }
+
+  function persistRemoteBankSource(url) {
+    replaceUrlHash(buildRemoteBankHash(url));
+    setUrlStateStatus("문제은행 JSON URL을 현재 주소에 저장했습니다.");
+  }
+
+  function loadBankFromText(raw, options = {}) {
+    const bank = parseBankJson(raw);
+    activateBank(bank);
+    saveCurrentBankSession(bank);
+    if (options.persist !== false) persistInlineBankSource(bank);
+  }
+
+  function loadBankFromLocalFileText(raw) {
+    const bank = parseBankJson(raw);
+    activateBank(bank);
+    saveCurrentBankSession(bank);
+    replaceUrlHash("");
+    setUrlStateStatus("현재 탭에서 새로고침 후 문제은행을 복원합니다.");
+  }
+
+  async function loadBankFromJsonUrl(url, options = {}) {
+    const sourceUrl = String(url || "").trim();
+    if (!sourceUrl) throw new Error("문제은행 JSON URL을 입력하세요.");
+    const resolvedUrl = new URL(sourceUrl, window.location.href).href;
+    const bank = parseBankJson(await fetchText(resolvedUrl, "문제은행 JSON"));
+    activateBank(bank);
+    saveCurrentBankSession(bank);
+    if (options.persist !== false) persistRemoteBankSource(sourceUrl);
+  }
+
+  function buildMetaPills(question) {
+    const values = [
+      question.id,
+      question.subject,
+      question.unit,
+      formatQuestionType(question.type),
+      question.difficulty ? `난이도 ${question.difficulty}` : "",
+      ...(question.tags || []),
+    ].filter(Boolean);
+
+    el.questionMeta.replaceChildren(...values.map((value) => createNode("span", "pill", value)));
+  }
+
+  function renderFeedback(question, answerRecord) {
+    if (!answerRecord || typeof answerRecord.isCorrect !== "boolean") {
+      el.gradeResult.className = "";
+      el.gradeResult.textContent = "";
+      el.explanation.textContent = "";
+      return;
+    }
+
+    el.gradeResult.className = answerRecord.isCorrect ? "correct" : "wrong";
+    if (question.type === "short_answer") {
+      const grade = gradeShortAnswer(question, answerRecord.textAnswer);
+      const matched = grade.matchedKeywords.join(", ") || "없음";
+      const missing = grade.missingKeywords.join(", ") || "없음";
+      el.gradeResult.textContent = `${answerRecord.isCorrect ? "정답" : "오답"} · 매칭: ${matched} · 누락: ${missing}`;
+    } else if (answerRecord.isCorrect) {
+      el.gradeResult.textContent = "정답";
+    } else {
+      el.gradeResult.textContent = `오답 · 정답: ${formatCorrectAnswer(question)}`;
+    }
+    el.explanation.textContent = `해설: ${question.explanation || "등록된 해설이 없습니다."}`;
+  }
+
+  function renderQuestion() {
+    const question = state.quizQuestions[state.currentIndex];
+    const saved = state.answersById[question.id];
+
+    el.quizProgress.textContent = `문제 ${state.currentIndex + 1} / ${state.quizQuestions.length}`;
+    el.questionStem.textContent = question.stem;
+    buildMetaPills(question);
+    el.questionInput.replaceChildren();
+
+    if (question.type === "single_choice") {
+      question.choices.forEach((choice) => {
+        const label = createNode("label", "choice");
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = "choice";
+        input.value = choice.id;
+        input.checked = saved?.selectedAnswer?.includes(choice.id) || false;
+        label.append(input, createNode("span", "", `${choice.id}. ${choice.text}`));
+        el.questionInput.append(label);
+      });
+    } else {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.id = "short-answer";
+      input.autocomplete = "off";
+      input.placeholder = "답안 입력";
+      input.setAttribute("aria-label", "주관식 답안");
+      input.value = saved?.textAnswer || "";
+      el.questionInput.append(input);
+    }
+
+    el.prevQuestion.disabled = state.currentIndex === 0;
+    el.nextQuestion.disabled = state.currentIndex === state.quizQuestions.length - 1;
+    renderFeedback(question, saved);
+  }
+
+  function startQuiz(questions) {
+    if (!questions.length) {
+      alert("풀이할 문제가 없습니다.");
+      return;
+    }
+    state.quizQuestions = [...questions];
+    state.currentIndex = 0;
+    state.sessionAnsweredIds = new Set();
+    loadProgress();
+    showSection(el.quizSection);
     renderQuestion();
   }
-});
 
-el.nextQuestion.addEventListener("click", () => {
-  if (state.currentIndex < state.quizQuestions.length - 1) {
-    state.currentIndex += 1;
-    renderQuestion();
+  function gradeCurrentQuestion() {
+    const question = state.quizQuestions[state.currentIndex];
+    const answeredAt = new Date().toISOString();
+    let grade;
+    let record;
+
+    if (question.type === "single_choice") {
+      const checked = document.querySelector('input[name="choice"]:checked');
+      if (!checked) {
+        el.gradeResult.className = "wrong";
+        el.gradeResult.textContent = "보기를 선택하세요.";
+        el.explanation.textContent = "";
+        return;
+      }
+      grade = gradeSingleChoice(question, [checked.value]);
+      record = {
+        bankId: state.activeBank.bankId,
+        bankVersion: bankVersion(state.activeBank),
+        questionId: question.id,
+        selectedAnswer: grade.selectedAnswer,
+        isCorrect: grade.isCorrect,
+        answeredAt,
+      };
+    } else {
+      const input = document.getElementById("short-answer");
+      grade = gradeShortAnswer(question, input.value);
+      record = {
+        bankId: state.activeBank.bankId,
+        bankVersion: bankVersion(state.activeBank),
+        questionId: question.id,
+        textAnswer: grade.textAnswer,
+        isCorrect: grade.isCorrect,
+        answeredAt,
+      };
+    }
+
+    saveAnswerRecord(record);
+    state.sessionAnsweredIds.add(question.id);
+    renderBankStats();
+    renderFeedback(question, record);
   }
-});
 
-el.finishQuiz.addEventListener("click", () => {
-  renderResult();
-  showSection(el.resultSection);
-});
-
-el.retryWrong.addEventListener("click", () => {
-  const wrong = state.quizQuestions.filter((q) => state.answers[q.id]?.isCorrect === false);
-  startQuiz(wrong);
-});
-
-el.backHome.addEventListener("click", () => {
-  renderRecentProgress();
-  showSection(el.homeSection);
-});
-el.quitQuiz.addEventListener("click", () => showSection(el.bankSection));
-el.resultHome.addEventListener("click", () => {
-  renderRecentProgress();
-  showSection(el.homeSection);
-});
-
-(async function init() {
-  try {
-    await loadCatalog();
-  } catch (error) {
-    el.homeError.textContent = error.message;
-    el.homeError.hidden = false;
+  function isSessionCorrect(question) {
+    return state.sessionAnsweredIds.has(question.id) && state.answersById[question.id]?.isCorrect === true;
   }
-})();
+
+  function currentWrongQuestions() {
+    return state.quizQuestions.filter((question) => !isSessionCorrect(question));
+  }
+
+  function renderResult() {
+    const total = state.quizQuestions.length;
+    const correct = state.quizQuestions.filter(isSessionCorrect).length;
+    const wrong = total - correct;
+    const rate = total ? `${Math.round((correct / total) * 100)}%` : "0%";
+
+    el.resultSummary.replaceChildren(
+      statNode("총 문항 수", total),
+      statNode("정답 수", correct),
+      statNode("오답 수", wrong),
+      statNode("정답률", rate),
+    );
+
+    const wrongQuestions = currentWrongQuestions();
+    el.wrongList.replaceChildren();
+    if (!wrongQuestions.length) {
+      el.wrongList.append(createNode("p", "muted", "틀린 문제가 없습니다."));
+    } else {
+      wrongQuestions.forEach((question) => {
+        const item = createNode("article", "wrong-item");
+        item.append(createNode("h4", "", question.stem));
+        item.append(createNode("p", "muted", `${question.id} · ${formatQuestionType(question.type)} · 정답 ${formatCorrectAnswer(question)}`));
+        el.wrongList.append(item);
+      });
+    }
+    el.retryWrong.disabled = wrongQuestions.length === 0;
+  }
+
+  function resetFilters() {
+    [el.filterSubject, el.filterUnit, el.filterTag, el.filterType, el.filterDifficulty].forEach((select) => {
+      select.value = "";
+    });
+    applyFilters();
+  }
+
+  el.localJsonInput.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      setError("");
+      loadBankFromLocalFileText(await file.text());
+    } catch (error) {
+      setError(`로컬 JSON 오류: ${error.message}`);
+      showSection(el.homeSection);
+    } finally {
+      event.target.value = "";
+    }
+  });
+
+  el.loadJsonUrl.addEventListener("click", async () => {
+    try {
+      setError("");
+      await loadBankFromJsonUrl(el.jsonUrlInput.value);
+    } catch (error) {
+      setError(`JSON URL 오류: ${error.message}`);
+      showSection(el.homeSection);
+    }
+  });
+
+  el.jsonUrlInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    el.loadJsonUrl.click();
+  });
+
+  el.loadDirectJson.addEventListener("click", () => {
+    try {
+      setError("");
+      loadBankFromText(el.directJsonInput.value);
+    } catch (error) {
+      setError(`직접 입력 JSON 오류: ${error.message}`);
+      showSection(el.homeSection);
+    }
+  });
+
+  [el.filterSubject, el.filterUnit, el.filterTag, el.filterType, el.filterDifficulty].forEach((select) => {
+    select.addEventListener("change", applyFilters);
+  });
+
+  el.resetFilters.addEventListener("click", resetFilters);
+  el.startAll.addEventListener("click", () => startQuiz(state.filteredQuestions));
+  el.startRandom.addEventListener("click", () => startQuiz([...state.filteredQuestions].sort(() => Math.random() - 0.5)));
+  el.backHome.addEventListener("click", () => {
+    showSection(el.homeSection);
+  });
+  el.gradeBtn.addEventListener("click", gradeCurrentQuestion);
+  el.prevQuestion.addEventListener("click", () => {
+    if (state.currentIndex > 0) {
+      state.currentIndex -= 1;
+      renderQuestion();
+    }
+  });
+  el.nextQuestion.addEventListener("click", () => {
+    if (state.currentIndex < state.quizQuestions.length - 1) {
+      state.currentIndex += 1;
+      renderQuestion();
+    }
+  });
+  el.finishQuiz.addEventListener("click", () => {
+    renderResult();
+    showSection(el.resultSection);
+  });
+  el.quitQuiz.addEventListener("click", () => {
+    renderBankStats();
+    showSection(el.bankSection);
+  });
+  el.retryWrong.addEventListener("click", () => startQuiz(currentWrongQuestions()));
+  el.resultHome.addEventListener("click", () => {
+    showSection(el.homeSection);
+  });
+
+  async function restoreBankSourceFromUrl() {
+    const source = readBankSourceFromUrl(window.location);
+    if (!source) return;
+    if (source.kind === "inline") {
+      activateBank(source.bank);
+      saveCurrentBankSession(source.bank);
+      setUrlStateStatus("URL에 저장된 문제은행 JSON을 복원했습니다.");
+      return;
+    }
+    await loadBankFromJsonUrl(source.url, { persist: false });
+    setUrlStateStatus("URL에 저장된 문제은행 JSON 링크를 복원했습니다.");
+  }
+
+  (async function init() {
+    try {
+      await restoreBankSourceFromUrl();
+      if (!state.activeBank) {
+        const sessionSource = readBankSourceFromSessionStorage(currentSessionStorage());
+        if (sessionSource) {
+          activateBank(sessionSource.bank);
+          setUrlStateStatus("현재 탭에 저장된 문제은행 JSON을 복원했습니다.");
+        }
+      }
+    } catch (error) {
+      setError(`복원 오류: ${error.message}`);
+      showSection(el.homeSection);
+    }
+  })();
+})(typeof globalThis !== "undefined" ? globalThis : window);
