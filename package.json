@@ -1,10 +1,14 @@
 {
-  "name": "base",
+  "name": "question-bank",
   "version": "1.0.0",
-  "description": "Base project template with automated Git hooks and commit validation",
+  "description": "GitHub Pages용 정적 문제은행 웹앱",
   "author": "kimchanhyung98",
   "scripts": {
-    "prepare": "husky"
+    "prepare": "husky",
+    "test": "node scripts/test.js",
+    "build": "node scripts/build.js",
+    "lint": "node --check app.js && node --check scripts/build.js && node --check scripts/test.js",
+    "serve": "python3 -m http.server 4173"
   },
   "devDependencies": {
     "husky": "^9.1.7"
