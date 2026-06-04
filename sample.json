@@ -1,0 +1,106 @@
+{
+  "schemaVersion": "1.0.0",
+  "bankId": "local-sample-bank",
+  "title": "로컬 샘플 문제은행",
+  "version": "v1",
+  "subject": "공통",
+  "description": "로컬 JSON 파일 불러오기와 직접 입력 테스트를 위한 샘플 문제은행입니다.",
+  "questions": [
+    {
+      "id": "local-sample-q001",
+      "type": "single_choice",
+      "subject": "행정법",
+      "unit": "행정행위",
+      "difficulty": 2,
+      "stem": "다음 중 취소사유가 있는 행정행위의 효력에 대한 설명으로 옳은 것은?",
+      "choices": [
+        { "id": "A", "text": "처분 즉시 당연무효가 된다." },
+        { "id": "B", "text": "취소되기 전까지 일단 유효하게 취급된다." },
+        { "id": "C", "text": "항상 형사처벌의 대상이 된다." },
+        { "id": "D", "text": "공정력이 전혀 인정되지 않는다." }
+      ],
+      "answer": ["B"],
+      "explanation": "취소사유가 있는 행정행위는 권한 있는 기관이 취소하기 전까지 일단 유효한 것으로 취급된다.",
+      "tags": ["행정법", "행정행위", "공정력"],
+      "source": {
+        "sourceType": "manual",
+        "sourceFile": "sample.json",
+        "page": 1,
+        "contentHash": "local-sample-q001"
+      },
+      "status": "published"
+    },
+    {
+      "id": "local-sample-q002",
+      "type": "short_answer",
+      "subject": "행정법",
+      "unit": "행정행위",
+      "difficulty": 2,
+      "stem": "행정행위가 취소되기 전까지 유효한 것으로 통용되는 효력을 쓰시오.",
+      "answer": ["공정력"],
+      "acceptedKeywords": ["공정력", "구성요건적 효력"],
+      "explanation": "공정력은 행정행위에 하자가 있더라도 취소되기 전까지 유효한 것으로 통용되는 효력이다.",
+      "tags": ["행정법", "주관식", "공정력"],
+      "source": {
+        "sourceType": "manual",
+        "sourceFile": "sample.json",
+        "page": 1,
+        "contentHash": "local-sample-q002"
+      },
+      "status": "published"
+    },
+    {
+      "id": "local-sample-q003",
+      "type": "single_choice",
+      "subject": "웹",
+      "unit": "정적 호스팅",
+      "difficulty": 1,
+      "stem": "GitHub Pages 기반 정적 웹앱에서 사용자 풀이 기록을 저장하기에 적절한 위치는?",
+      "choices": [
+        { "id": "A", "text": "브라우저 localStorage" },
+        { "id": "B", "text": "프론트엔드에 포함된 API key" },
+        { "id": "C", "text": "브라우저에서 GitHub 저장소로 직접 push" },
+        { "id": "D", "text": "사용자 모르게 외부 서버 업로드" }
+      ],
+      "answer": ["A"],
+      "explanation": "이 프로젝트는 서버 없이 동작하므로 사용자별 풀이 기록은 브라우저 로컬 저장소에만 저장한다.",
+      "tags": ["웹", "GitHub Pages", "localStorage"],
+      "source": {
+        "sourceType": "manual",
+        "sourceFile": "sample.json",
+        "page": 1,
+        "contentHash": "local-sample-q003"
+      },
+      "status": "published"
+    },
+    {
+      "id": "local-sample-q004",
+      "type": "short_answer",
+      "subject": "웹",
+      "unit": "브라우저 저장소",
+      "difficulty": 2,
+      "stem": "서버 없이 새로고침 후에도 문제은행 JSON 입력 상태를 복원하기 위해 URL에 저장할 때 사용하는 JavaScript 인코딩 함수 이름을 쓰시오.",
+      "answer": ["encodeURIComponent"],
+      "acceptedKeywords": ["encodeURIComponent", "인코드URIComponent"],
+      "grading": {
+        "mode": "contains_all_groups",
+        "keywordGroups": [["encodeURIComponent", "인코드URIComponent"]],
+        "normalization": {
+          "trim": true,
+          "lowercase": true,
+          "removeSpaces": true,
+          "removePunctuation": true
+        }
+      },
+      "explanation": "JSON 원문은 encodeURIComponent(JSON.stringify(json)) 형태로 URL hash에 저장할 수 있다.",
+      "tags": ["웹", "URL", "JSON"],
+      "source": {
+        "sourceType": "manual",
+        "sourceFile": "sample.json",
+        "page": 1,
+        "contentHash": "local-sample-q004"
+      },
+      "status": "published"
+    }
+  ]
+}

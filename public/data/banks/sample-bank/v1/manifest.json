@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "1.0.0",
+  "bankId": "sample-bank",
+  "title": "샘플 행정법 문제은행",
+  "version": "v1",
+  "subject": "행정법",
+  "description": "샘플 문제",
+  "questionCount": 4,
+  "questionFiles": ["questions-001.json", "questions-002.json"],
+  "tags": ["행정행위", "행정절차"],
+  "publishedAt": "2026-05-31T00:00:00+09:00"
+}

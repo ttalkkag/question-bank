@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "1.0.0",
+  "bankId": "sample-bank",
+  "version": "v1",
+  "questions": [
+    {
+      "id": "sample-bank-v1-q000001",
+      "type": "single_choice",
+      "subject": "행정법",
+      "unit": "행정행위",
+      "difficulty": 3,
+      "stem": "다음 중 행정행위 하자에 대한 설명으로 옳은 것은?",
+      "choices": [
+        { "id": "A", "text": "무효 행정행위는 취소 전까지 유효하다." },
+        { "id": "B", "text": "취소사유가 있는 행정행위는 취소 전까지 유효하다." },
+        { "id": "C", "text": "부존재 행정행위도 공정력이 인정된다." },
+        { "id": "D", "text": "중대명백설은 모든 하자를 취소사유로 본다." }
+      ],
+      "answer": ["B"],
+      "explanation": "취소사유가 있는 행정행위는 취소되기 전까지 유효하다.",
+      "tags": ["행정행위", "하자"],
+      "status": "published"
+    },
+    {
+      "id": "sample-bank-v1-q000002",
+      "type": "short_answer",
+      "subject": "행정법",
+      "unit": "행정행위",
+      "difficulty": 2,
+      "stem": "행정행위가 취소되기 전까지 유효한 것으로 통용되는 효력은?",
+      "answerText": "공정력",
+      "grading": {
+        "mode": "contains_all_groups",
+        "keywordGroups": [["공정력"]],
+        "normalization": {
+          "trim": true,
+          "lowercase": true,
+          "removeSpaces": true,
+          "removePunctuation": true
+        }
+      },
+      "explanation": "공정력은 취소되기 전까지 유효한 것으로 통용되는 효력이다.",
+      "tags": ["행정행위", "공정력"],
+      "status": "published"
+    }
+  ]
+}

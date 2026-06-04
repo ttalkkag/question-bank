@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/question_bank.schema.json",
+  "title": "Question Bank",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["bankId", "title", "questions"],
+  "properties": {
+    "schemaVersion": { "type": "string" },
+    "bankId": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "version": { "type": "string" },
+    "subject": { "type": "string" },
+    "description": { "type": "string" },
+    "questions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/question" }
+    }
+  },
+  "$defs": {
+    "choice": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "text"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "text": { "type": "string", "minLength": 1 }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "sourceType": { "type": "string" },
+        "sourceFile": { "type": "string" },
+        "page": { "type": "number" },
+        "contentHash": { "type": "string" }
+      }
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "type", "stem", "answer"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "enum": ["single_choice", "short_answer"] },
+        "subject": { "type": "string" },
+        "unit": { "type": "string" },
+        "difficulty": { "type": "number" },
+        "stem": { "type": "string", "minLength": 1 },
+        "choices": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/choice" }
+        },
+        "answer": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "acceptedKeywords": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "answerText": { "type": "string" },
+        "grading": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "explanation": { "type": "string" },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "source": { "$ref": "#/$defs/source" },
+        "status": { "enum": ["draft", "reviewed", "published"] }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "type": { "const": "single_choice" } },
+            "required": ["type"]
+          },
+          "then": {
+            "required": ["choices"],
+            "properties": {
+              "choices": {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 4
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
