@@ -338,9 +338,55 @@ textarea {
   padding: 20px;
 }
 
-.question-body h3 {
+.question-body h3,
+.question-stem {
   font-size: 24px;
   line-height: 1.55;
+}
+
+.question-stem .rich-text {
+  margin: 0 0 10px;
+}
+
+.question-stem .rich-text:last-child {
+  margin-bottom: 0;
+}
+
+.q-table {
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 18px;
+}
+
+.q-table th,
+.q-table td {
+  border: 1px solid var(--line);
+  padding: 6px 12px;
+  text-align: center;
+}
+
+.q-table th {
+  background: var(--brand-soft);
+}
+
+.q-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 12px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.choice-rich {
+  display: grid;
+  gap: 6px;
+  line-height: 1.55;
+}
+
+.choice-rich .q-table {
+  margin: 4px 0;
+  font-size: 16px;
 }
 
 .answer-area {

@@ -75,6 +75,37 @@ function testGrading() {
   assert.equal(core.gradeShortAnswer(normalized, "  Local Storage!!  ").isCorrect, true);
 }
 
+function testRichContent() {
+  // 평문은 단일 text 블록.
+  assert.deepEqual(core.parseRichBlocks("그냥 텍스트"), [{ type: "text", text: "그냥 텍스트" }]);
+
+  // 마크다운 표 → table 블록.
+  const tableStem = ["다음 진리표:", "", "| X | Y | F |", "|---|---|---|", "| 0 | 0 | 0 |", "| 1 | 1 | 0 |"].join("\n");
+  const blocks = core.parseRichBlocks(tableStem);
+  assert.equal(blocks[0].type, "text");
+  const table = blocks.find((block) => block.type === "table");
+  assert.deepEqual(table.headers, ["X", "Y", "F"]);
+  assert.deepEqual(table.rows, [["0", "0", "0"], ["1", "1", "0"]]);
+
+  // 이미지 마크다운 → image 블록.
+  const imageBlocks = core.parseRichBlocks("![회로](data:image/png;base64,AAAA)");
+  assert.deepEqual(imageBlocks, [{ type: "image", alt: "회로", url: "data:image/png;base64,AAAA" }]);
+
+  // 파이프 한 개뿐이고 구분선이 없으면 표가 아니다(평문 유지).
+  assert.deepEqual(core.parseRichBlocks("F = X | Y"), [{ type: "text", text: "F = X | Y" }]);
+
+  // URL 살균: data:image/http(s)만 허용.
+  assert.equal(core.sanitizeMediaUrl("data:image/png;base64,AAAA"), "data:image/png;base64,AAAA");
+  assert.equal(core.sanitizeMediaUrl("https://example.com/a.png"), "https://example.com/a.png");
+  assert.equal(core.sanitizeMediaUrl("javascript:alert(1)"), null);
+  assert.equal(core.sanitizeMediaUrl("data:text/html;base64,AAAA"), null);
+
+  // 요약: 표/이미지는 걷어내고 평문만, 없으면 표시.
+  assert.equal(core.plainTextSummary(tableStem), "다음 진리표:");
+  assert.equal(core.plainTextSummary("| X | Y |\n|---|---|\n| 0 | 1 |"), "[표 포함 문제]");
+  assert.equal(core.plainTextSummary("![c](data:image/png;base64,AAAA)"), "[그림 포함 문제]");
+}
+
 function testValidation() {
   const validBank = readJson("public/data/sample_question_bank.json");
   assert.equal(core.validateBank(validBank).valid, true);
@@ -193,6 +224,7 @@ function testOneTimeUiOnly() {
 }
 
 testGrading();
+testRichContent();
 testValidation();
 testSampleDataFiles();
 testJsonSourceUrlState();

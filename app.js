@@ -291,8 +291,92 @@
     return normalizeAnswerArray(question.answer).join(", ") || getShortAnswerCandidates(question).join(", ");
   }
 
+  function splitTableRow(line) {
+    return line
+      .trim()
+      .replace(/^\|/, "")
+      .replace(/\|$/, "")
+      .split("|")
+      .map((cell) => cell.trim());
+  }
+
+  function isTableSeparatorRow(line) {
+    if (line == null || line.indexOf("|") === -1) return false;
+    const cells = splitTableRow(line);
+    return cells.length >= 1 && cells.every((cell) => /^:?-{1,}:?$/.test(cell));
+  }
+
+  function isTableContentRow(line) {
+    return line != null && line.indexOf("|") !== -1 && splitTableRow(line).length >= 2;
+  }
+
+  // stem/보기 텍스트를 텍스트·마크다운 표·이미지 블록으로 분해한다(순수 함수).
+  // 표:  | X | Y | 헤더 다음 줄이 |---| 구분선.   이미지:  ![alt](data:image/...; 또는 http(s) URL)
+  function parseRichBlocks(text) {
+    const lines = String(text == null ? "" : text).split("\n");
+    const blocks = [];
+    let buffer = [];
+    const flush = () => {
+      if (!buffer.length) return;
+      const joined = buffer.join("\n").replace(/\s+$/, "");
+      if (joined.trim()) blocks.push({ type: "text", text: joined });
+      buffer = [];
+    };
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      const image = line.trim().match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+      if (image) {
+        flush();
+        blocks.push({ type: "image", alt: image[1], url: image[2].trim() });
+        continue;
+      }
+      if (isTableContentRow(line) && isTableSeparatorRow(lines[i + 1])) {
+        flush();
+        const headers = splitTableRow(line);
+        const rows = [];
+        let j = i + 2;
+        while (j < lines.length && isTableContentRow(lines[j])) {
+          rows.push(splitTableRow(lines[j]));
+          j += 1;
+        }
+        blocks.push({ type: "table", headers, rows });
+        i = j - 1;
+        continue;
+      }
+      buffer.push(line);
+    }
+    flush();
+    return blocks;
+  }
+
+  // data:image/... 와 http(s)만 허용. javascript:/기타 스킴은 거부(널 반환).
+  function sanitizeMediaUrl(url) {
+    const value = String(url == null ? "" : url).trim();
+    if (/^data:image\/(png|jpe?g|gif|webp|svg\+xml);/i.test(value)) return value;
+    if (/^https?:\/\//i.test(value)) return value;
+    return null;
+  }
+
+  // 목록/요약용: 표·이미지 블록을 걷어낸 평문(없으면 [표/그림 포함] 표시).
+  function plainTextSummary(text) {
+    const blocks = parseRichBlocks(text);
+    const summary = blocks
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (summary) return summary;
+    if (blocks.some((block) => block.type === "table")) return "[표 포함 문제]";
+    if (blocks.some((block) => block.type === "image")) return "[그림 포함 문제]";
+    return "";
+  }
+
   const core = {
     normalizeAnswerText,
+    parseRichBlocks,
+    sanitizeMediaUrl,
+    plainTextSummary,
     gradeSingleChoice,
     gradeShortAnswer,
     getShortAnswerCandidates,
@@ -386,6 +470,56 @@
     if (className) node.className = className;
     if (text !== undefined) node.textContent = text;
     return node;
+  }
+
+  function buildTableNode(block) {
+    const table = createNode("table", "q-table");
+    if (block.headers && block.headers.length) {
+      const head = document.createElement("thead");
+      const row = document.createElement("tr");
+      block.headers.forEach((cell) => row.append(createNode("th", "", cell)));
+      head.append(row);
+      table.append(head);
+    }
+    const body = document.createElement("tbody");
+    block.rows.forEach((cells) => {
+      const row = document.createElement("tr");
+      cells.forEach((cell) => row.append(createNode("td", "", cell)));
+      body.append(row);
+    });
+    table.append(body);
+    return table;
+  }
+
+  function buildImageNode(url, alt) {
+    const safe = core.sanitizeMediaUrl(url);
+    if (!safe) return null;
+    const img = document.createElement("img");
+    img.src = safe;
+    img.alt = alt || "";
+    img.className = "q-image";
+    img.loading = "lazy";
+    return img;
+  }
+
+  // 텍스트/마크다운 표/이미지 블록을 DOM으로 렌더(컨테이너 비우고 채움).
+  // 인용 텍스트는 createNode(textContent)로만 넣으므로 임의 JSON에도 XSS 안전.
+  function renderRich(container, text) {
+    container.replaceChildren();
+    core.parseRichBlocks(text).forEach((block) => {
+      if (block.type === "table") {
+        container.append(buildTableNode(block));
+      } else if (block.type === "image") {
+        const img = buildImageNode(block.url, block.alt);
+        if (img) container.append(img);
+      } else {
+        container.append(createNode("p", "rich-text", block.text));
+      }
+    });
+  }
+
+  function choiceHasRichContent(choice) {
+    return core.parseRichBlocks(choice.text).some((block) => block.type !== "text");
   }
 
   function setError(message) {
@@ -584,7 +718,9 @@
     const saved = state.answersById[question.id];
 
     el.quizProgress.textContent = `문제 ${state.currentIndex + 1} / ${state.quizQuestions.length}`;
-    el.questionStem.textContent = question.stem;
+    renderRich(el.questionStem, question.stem);
+    const stemImage = buildImageNode(question.image, question.imageAlt || "문제 그림");
+    if (stemImage) el.questionStem.append(stemImage);
     buildMetaPills(question);
     el.questionInput.replaceChildren();
 
@@ -596,7 +732,14 @@
         input.name = "choice";
         input.value = choice.id;
         input.checked = saved?.selectedAnswer?.includes(choice.id) || false;
-        label.append(input, createNode("span", "", `${choice.id}. ${choice.text}`));
+        if (choiceHasRichContent(choice)) {
+          const wrap = createNode("span", "choice-rich");
+          wrap.append(createNode("strong", "choice-label", `${choice.id}.`));
+          renderRich(wrap, choice.text);
+          label.append(input, wrap);
+        } else {
+          label.append(input, createNode("span", "", `${choice.id}. ${choice.text}`));
+        }
         el.questionInput.append(label);
       });
     } else {
@@ -698,7 +841,7 @@
     } else {
       wrongQuestions.forEach((question) => {
         const item = createNode("article", "wrong-item");
-        item.append(createNode("h4", "", question.stem));
+        item.append(createNode("h4", "", core.plainTextSummary(question.stem) || question.stem));
         item.append(createNode("p", "muted", `${question.id} · ${formatQuestionType(question.type)} · 정답 ${formatCorrectAnswer(question)}`));
         el.wrongList.append(item);
       });
