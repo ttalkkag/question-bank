@@ -6,7 +6,9 @@ from pathlib import Path
 QUESTION_RE = re.compile(r"^##\s+(\d+)\.\s+(.+?)\s*$", re.MULTILINE)
 CHOICE_RE = re.compile(r"^-\s+([①②③④])\s+(.+?)\s*$", re.MULTILINE)
 ANSWER_RE = re.compile(r"^-\s*정답:\s*([①②③④])\s*$", re.MULTILINE)
+ANSWER_TEXT_RE = re.compile(r"^-\s*정답:\s*(.+?)\s*$", re.MULTILINE)
 STATUS_RE = re.compile(r"^-\s*status:\s*(\S+)\s*$", re.MULTILINE)
+TYPE_RE = re.compile(r"^-\s*유형:\s*(\S+)\s*$", re.MULTILINE)
 FIELD_RE = re.compile(r"^-\s*(유형|정답|해설|sourcePage|status)\s*:", re.MULTILINE)
 
 # 헤더 stem이 이런 단어를 포함하면 진리표/그림 등 지문(stimulus)이 따라와야 한다.
@@ -57,13 +59,19 @@ def validate_file(path):
         found = True
         status_match = STATUS_RE.search(body)
         status = status_match.group(1) if status_match else "complete"
+        type_match = TYPE_RE.search(body)
+        qtype = type_match.group(1) if type_match else "single_choice"
         choices = CHOICE_RE.findall(body)
         answer = ANSWER_RE.search(body)
+        answer_text = ANSWER_TEXT_RE.search(body)
         stim = stimulus_lines(body)
 
         if not stem:
             errors.append(f"q{number}: missing stem")
-        if status == "complete":
+        if status == "complete" and qtype == "short_answer":
+            if not (answer_text and answer_text.group(1).strip()):
+                errors.append(f"q{number}: complete short_answer requires 정답 text")
+        elif status == "complete":
             symbols = [symbol for symbol, _ in choices]
             if symbols != ["①", "②", "③", "④"]:
                 errors.append(f"q{number}: complete single_choice requires choices ①-④ in order")
