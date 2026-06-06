@@ -94,6 +94,13 @@ function testRichContent() {
   // 파이프 한 개뿐이고 구분선이 없으면 표가 아니다(평문 유지).
   assert.deepEqual(core.parseRichBlocks("F = X | Y"), [{ type: "text", text: "F = X | Y" }]);
 
+  // 단일 열 표(SQL 실행결과 보기 등)도 표로 인식한다.
+  const oneCol = core.parseRichBlocks("| 직장주소 |\n| --- |\n| 서울시 종로구 |\n| 부산시 북구 |");
+  assert.equal(oneCol.length, 1);
+  assert.equal(oneCol[0].type, "table");
+  assert.deepEqual(oneCol[0].headers, ["직장주소"]);
+  assert.deepEqual(oneCol[0].rows, [["서울시 종로구"], ["부산시 북구"]]);
+
   // URL 살균: data:image/http(s)만 허용.
   assert.equal(core.sanitizeMediaUrl("data:image/png;base64,AAAA"), "data:image/png;base64,AAAA");
   assert.equal(core.sanitizeMediaUrl("https://example.com/a.png"), "https://example.com/a.png");

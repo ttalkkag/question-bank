@@ -307,7 +307,9 @@
   }
 
   function isTableContentRow(line) {
-    return line != null && line.indexOf("|") !== -1 && splitTableRow(line).length >= 2;
+    // 단일 열 표(`| 직장주소 |`)도 허용한다. 표 인식은 다음 줄이 구분선(`|---|`)인지로
+    // 가드되므로(parseRichBlocks), 파이프가 하나뿐인 평문이 표로 오인되지 않는다.
+    return line != null && line.indexOf("|") !== -1 && splitTableRow(line).length >= 1;
   }
 
   // stem/보기 텍스트를 텍스트·마크다운 표·이미지 블록으로 분해한다(순수 함수).
