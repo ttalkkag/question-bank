@@ -291,6 +291,36 @@
     return normalizeAnswerArray(question.answer).join(", ") || getShortAnswerCandidates(question).join(", ");
   }
 
+  // 보기 순서를 무작위로 섞은 id 배열을 반환(Fisher–Yates). randomFn 주입 가능(테스트용).
+  // 채점은 보기 id로 하므로 표시 순서만 바뀌고 정답 판정에는 영향이 없다.
+  function shuffleChoiceIds(ids, randomFn) {
+    const rng = typeof randomFn === "function" ? randomFn : Math.random;
+    const out = Array.isArray(ids) ? ids.slice() : [];
+    for (let i = out.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(rng() * (i + 1));
+      const tmp = out[i];
+      out[i] = out[j];
+      out[j] = tmp;
+    }
+    return out;
+  }
+
+  // 표시 위치(0,1,2,3)에 대응하는 라벨 문자(A,B,C,D).
+  function positionLabel(index) {
+    return String.fromCharCode(65 + index);
+  }
+
+  // 정답 보기 id들을 현재 표시 순서 기준의 위치 라벨(A~D)로 변환.
+  function correctAnswerLabels(question, orderIds) {
+    const order = Array.isArray(orderIds) && orderIds.length
+      ? orderIds
+      : (question.choices || []).map((choice) => choice.id);
+    return normalizeAnswerArray(question.answer).map((id) => {
+      const index = order.indexOf(id);
+      return index >= 0 ? positionLabel(index) : id;
+    });
+  }
+
   function splitTableRow(line) {
     return line
       .trim()
@@ -395,6 +425,9 @@
     clearBankFromSessionStorage,
     formatQuestionType,
     formatCorrectAnswer,
+    shuffleChoiceIds,
+    positionLabel,
+    correctAnswerLabels,
     bankVersion,
   };
 
@@ -416,6 +449,7 @@
     answersById: {},
     sessionAnsweredIds: new Set(),
     currentIndex: 0,
+    choiceOrderById: {},
   };
 
   const el = {
@@ -693,6 +727,14 @@
     el.questionMeta.replaceChildren(...values.map((value) => createNode("span", "pill", value)));
   }
 
+  // 화면에 표시된 보기 순서를 반영한 정답 라벨(A~D). 셔플돼도 올바른 위치를 가리킨다.
+  function formatCorrectAnswerDisplay(question) {
+    if (question.type === "single_choice") {
+      return core.correctAnswerLabels(question, state.choiceOrderById[question.id]).join(", ");
+    }
+    return formatCorrectAnswer(question);
+  }
+
   function renderFeedback(question, answerRecord) {
     if (!answerRecord || typeof answerRecord.isCorrect !== "boolean") {
       el.gradeResult.className = "";
@@ -710,7 +752,7 @@
     } else if (answerRecord.isCorrect) {
       el.gradeResult.textContent = "정답";
     } else {
-      el.gradeResult.textContent = `오답 · 정답: ${formatCorrectAnswer(question)}`;
+      el.gradeResult.textContent = `오답 · 정답: ${formatCorrectAnswerDisplay(question)}`;
     }
     el.explanation.textContent = `해설: ${question.explanation || "등록된 해설이 없습니다."}`;
   }
@@ -727,20 +769,24 @@
     el.questionInput.replaceChildren();
 
     if (question.type === "single_choice") {
-      question.choices.forEach((choice) => {
+      const order = state.choiceOrderById[question.id] || question.choices.map((choice) => choice.id);
+      order.forEach((choiceId, index) => {
+        const choice = question.choices.find((item) => item.id === choiceId);
+        if (!choice) return;
+        const letter = positionLabel(index); // 표시 라벨은 위치 기준(A,B,C,D)
         const label = createNode("label", "choice");
         const input = document.createElement("input");
         input.type = "radio";
         input.name = "choice";
-        input.value = choice.id;
+        input.value = choice.id; // 채점은 보기 id로 (표시 순서와 무관)
         input.checked = saved?.selectedAnswer?.includes(choice.id) || false;
         if (choiceHasRichContent(choice)) {
           const wrap = createNode("span", "choice-rich");
-          wrap.append(createNode("strong", "choice-label", `${choice.id}.`));
+          wrap.append(createNode("strong", "choice-label", `${letter}.`));
           renderRich(wrap, choice.text);
           label.append(input, wrap);
         } else {
-          label.append(input, createNode("span", "", `${choice.id}. ${choice.text}`));
+          label.append(input, createNode("span", "", `${letter}. ${choice.text}`));
         }
         el.questionInput.append(label);
       });
@@ -768,6 +814,13 @@
     state.quizQuestions = [...questions];
     state.currentIndex = 0;
     state.sessionAnsweredIds = new Set();
+    // 문항마다 보기 순서를 한 번 섞어 세션 동안 고정(이전/다음 이동·재채점 시 동일 순서 유지).
+    state.choiceOrderById = {};
+    state.quizQuestions.forEach((question) => {
+      if (question.type === "single_choice" && Array.isArray(question.choices)) {
+        state.choiceOrderById[question.id] = shuffleChoiceIds(question.choices.map((choice) => choice.id));
+      }
+    });
     loadProgress();
     showSection(el.quizSection);
     renderQuestion();
@@ -844,7 +897,7 @@
       wrongQuestions.forEach((question) => {
         const item = createNode("article", "wrong-item");
         item.append(createNode("h4", "", core.plainTextSummary(question.stem) || question.stem));
-        item.append(createNode("p", "muted", `${question.id} · ${formatQuestionType(question.type)} · 정답 ${formatCorrectAnswer(question)}`));
+        item.append(createNode("p", "muted", `${question.id} · ${formatQuestionType(question.type)} · 정답 ${formatCorrectAnswerDisplay(question)}`));
         el.wrongList.append(item);
       });
     }

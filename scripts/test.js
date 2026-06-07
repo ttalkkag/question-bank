@@ -113,6 +113,35 @@ function testRichContent() {
   assert.equal(core.plainTextSummary("![c](data:image/png;base64,AAAA)"), "[그림 포함 문제]");
 }
 
+function testChoiceShuffle() {
+  // 위치 라벨
+  assert.equal(core.positionLabel(0), "A");
+  assert.equal(core.positionLabel(3), "D");
+
+  // Fisher–Yates: rng=()=>0 이면 결정적 순열
+  assert.deepEqual(core.shuffleChoiceIds(["A", "B", "C", "D"], () => 0), ["B", "C", "D", "A"]);
+
+  // 어떤 rng든 원소 집합은 보존(순열)
+  const ids = ["A", "B", "C", "D"];
+  for (const rng of [() => 0, () => 0.5, () => 0.999]) {
+    const out = core.shuffleChoiceIds(ids, rng);
+    assert.deepEqual([...out].sort(), [...ids].sort());
+    assert.notEqual(out, ids); // 원본 비변경(복사본 반환)
+  }
+  assert.deepEqual(ids, ["A", "B", "C", "D"]);
+
+  // 정답 라벨은 표시 순서를 따른다(채점은 id 기준이라 불변)
+  const q = { type: "single_choice", answer: ["A"], choices: [{ id: "A" }, { id: "B" }, { id: "C" }, { id: "D" }] };
+  assert.deepEqual(core.correctAnswerLabels(q, ["B", "C", "D", "A"]), ["D"]); // A가 4번째 위치 → D
+  assert.deepEqual(core.correctAnswerLabels(q, ["A", "B", "C", "D"]), ["A"]);
+  assert.deepEqual(core.correctAnswerLabels(q, null), ["A"]); // 순서 없으면 choices 순서
+
+  // 셔플해도 채점은 id 기준으로 정답 유지
+  const order = core.shuffleChoiceIds(q.choices.map((c) => c.id), () => 0);
+  assert.equal(core.gradeSingleChoice(q, ["A"]).isCorrect, true);
+  assert.ok(order.includes("A"));
+}
+
 function testValidation() {
   const validBank = readJson("public/data/sample_question_bank.json");
   assert.equal(core.validateBank(validBank).valid, true);
@@ -232,6 +261,7 @@ function testOneTimeUiOnly() {
 
 testGrading();
 testRichContent();
+testChoiceShuffle();
 testValidation();
 testSampleDataFiles();
 testJsonSourceUrlState();
