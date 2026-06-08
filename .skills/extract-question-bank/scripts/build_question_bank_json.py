@@ -134,6 +134,19 @@ def parse_markdown(path, *, subject, id_prefix, source_type):
                 question["acceptedKeywords"] = keywords
         else:
             raise ValueError(f"{path}:{number}: unsupported type {qtype!r}")
+        # 선택적 메타: 생성 문항용 난이도/태그(있을 때만, 하위호환).
+        difficulty = read_field(section, "난이도")
+        if difficulty:
+            try:
+                question["difficulty"] = int(difficulty)
+            except ValueError:
+                pass
+        extra_tags = [t.strip() for t in read_field(section, "tags").split(",") if t.strip()]
+        if extra_tags:
+            for tag in extra_tags:
+                if tag not in question["tags"]:
+                    question["tags"].append(tag)
+
         # 선택적 그림: `- image: data:image/...` (base64 data URI) 또는 http(s) URL.
         image = read_field(section, "image")
         if image:
